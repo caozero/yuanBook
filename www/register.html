@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>邀请注册 - 家庭记账</title>
+    <link rel="stylesheet" href="/css/style.css?v=invite-register-20260704">
+</head>
+<body class="register-page">
+    <main class="login-panel register-panel">
+        <section class="login-box register-box">
+            <div class="brand-mark">✉️</div>
+            <h1>邀请创建新账号</h1>
+            <p id="register-hint">正在验证邀请链接，并准备创建新账号...</p>
+            <form id="register-form" class="login-form" autocomplete="off">
+                <label>
+                    <span>用户名</span>
+                    <input type="text" id="register-username" placeholder="请输入用户名" autocomplete="username" maxlength="40" readonly required>
+                </label>
+                <label>
+                    <span>密码</span>
+                    <input type="password" id="register-password" placeholder="请输入密码" autocomplete="new-password" readonly required>
+                </label>
+                <div id="register-message" class="form-message error hidden"></div>
+                <button id="btn-register" type="submit" disabled>创建账号并进入账本</button>
+            </form>
+            <a class="register-login-link" href="/ledger.html">已有账号？返回登录</a>
+        </section>
+    </main>
+    <script src="/js/register.js"></script>
+</body>
+</html>

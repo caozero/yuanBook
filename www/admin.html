@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统管理后台 - 家庭记账</title>
+    <link rel="stylesheet" href="/css/style.css?v=admin-donation-20260715">
+</head>
+<body class="admin-page">
+    <main class="admin-shell">
+        <section class="admin-hero panel">
+            <a class="admin-home-link" href="/ledger.html" title="返回记账首页" aria-label="返回记账首页">🏠</a>
+            <div class="admin-hero-actions admin-hero-actions-top">
+                <button id="admin-current-user" type="button" class="admin-user-text" title="刷新本页">-</button>
+                <button id="btn-admin-logout" type="button" class="admin-logout-text">退出登录</button>
+            </div>
+        </section>
+
+        <nav class="admin-domain-tabs" aria-label="系统管理分类">
+            <button type="button" class="admin-domain-tab active" data-domain="settings">系统参数</button>
+            <button type="button" class="admin-domain-tab" data-domain="users">用户管理</button>
+            <button type="button" class="admin-domain-tab" data-domain="donation">赞赏捐赠</button>
+        </nav>
+
+        <section id="admin-settings-domain" class="admin-main-grid admin-domain-panel">
+            <section class="panel admin-list-panel admin-list-panel-full">
+                <div class="admin-settings-toolbar">
+                    <div id="admin-list-message" class="muted">正在加载系统参数...</div>
+                    <div id="admin-settings-pagination" class="admin-settings-pagination"></div>
+                </div>
+                <div id="admin-settings-group-title" class="admin-settings-group-title">全部参数</div>
+                <div class="admin-settings-list-wrap">
+                    <ul id="admin-settings-body" class="admin-settings-list">
+                        <li class="admin-empty-cell">加载中...</li>
+                    </ul>
+                </div>
+            </section>
+        </section>
+
+        <section id="admin-users-domain" class="admin-main-grid admin-domain-panel hidden">
+            <section class="panel admin-list-panel admin-list-panel-full">
+                <div class="admin-settings-toolbar">
+                    <div id="admin-users-message" class="muted">用户列表尚未加载</div>
+                    <button id="btn-create-user" type="button" class="admin-table-button">创建用户</button>
+                </div>
+                <div class="admin-settings-group-title">独立用户邀请</div>
+                <div class="admin-independent-invite-panel">
+                    <p class="muted">生成仅用于创建普通用户的注册链接；注册后不会加入任何家庭或账本。</p>
+                    <div class="admin-independent-invite-form">
+                        <input id="admin-independent-invite-link" class="admin-inline-input" type="text" readonly aria-label="独立用户邀请链接" placeholder="点击生成独立用户邀请">
+                        <button id="btn-copy-independent-invite" type="button" class="admin-secondary-button">复制链接</button>
+                        <button id="btn-create-independent-invite" type="button" class="admin-table-button">生成邀请</button>
+                    </div>
+                    <div id="admin-independent-invite-status" class="muted">尚未查询有效邀请。</div>
+                </div>
+                <div class="admin-settings-group-title">用户账号</div>
+                <div id="admin-user-create-form" class="admin-user-create-form hidden">
+                    <input id="admin-new-username" class="admin-inline-input" type="text" autocomplete="off" placeholder="用户名">
+                    <input id="admin-new-password" class="admin-inline-input" type="password" autocomplete="new-password" placeholder="初始密码（可留空）">
+                    <label class="admin-inline-checkbox"><input id="admin-new-is-admin" type="checkbox"><span>管理员</span></label>
+                    <button id="btn-submit-user" type="button" class="admin-table-button">提交创建</button>
+                    <button id="btn-cancel-user" type="button" class="admin-secondary-button">取消</button>
+                </div>
+                <div class="admin-settings-list-wrap">
+                    <ul id="admin-users-body" class="admin-settings-list">
+                        <li class="admin-empty-cell">切换到用户管理后加载</li>
+                    </ul>
+                </div>
+            </section>
+        </section>
+
+        <section id="admin-donation-domain" class="admin-main-grid admin-domain-panel hidden">
+            <section class="panel admin-list-panel admin-list-panel-full admin-donation-panel">
+                <div class="admin-donation-copy">
+                    <div class="admin-settings-group-title">感谢支持 YuanBook</div>
+                    <p class="muted">如果这个项目对你有帮助，欢迎使用微信扫码随意赞赏。</p>
+                </div>
+                <div class="admin-donation-image-wrap">
+                    <img id="admin-donation-image" class="admin-donation-image hidden" alt="微信赞赏码">
+                    <div id="admin-donation-status" class="muted">切换到本页后加载赞赏码。</div>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <script src="/js/admin.js?v=admin-donation-20260715"></script>
+</body>
+</html>

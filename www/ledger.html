@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>家庭记账</title>
+    <link rel="stylesheet" href="/css/style.css?v=ledger-ui-20260704-no-label-dim-save">
+</head>
+<body>
+    <section id="login-panel" class="login-panel">
+        <div class="login-box">
+            <div class="brand-mark">💰</div>
+            <h1>家庭记账</h1>
+            <p>登录后管理家庭账本、分类、成员和收支流水</p>
+            <form id="login-form" class="login-form" autocomplete="on">
+                <label>
+                    <span>用户名</span>
+                    <input type="text" id="login-username" placeholder="请输入用户名" autocomplete="username" required>
+                </label>
+                <label>
+                    <span>密码</span>
+                    <input type="password" id="login-password" placeholder="请输入密码" autocomplete="current-password" required>
+                </label>
+                <div id="login-error" class="form-message error hidden"></div>
+                <button id="btn-login" type="submit">登录</button>
+            </form>
+        </div>
+    </section>
+
+    <div id="app" class="app-shell hidden">
+        <header class="topbar compact-topbar">
+            <div class="scope-wrap" aria-label="当前账本">
+                <span class="scope-icon" aria-hidden="true">📒</span>
+                <span id="current-scope" class="current-scope">请选择或创建账本</span>
+            </div>
+            <nav class="page-tabs topbar-tabs" aria-label="页面切换">
+                <button id="tab-ledger" class="tab-button active" type="button" data-page="ledger">记账</button>
+                <button id="tab-stats" class="tab-button" type="button" data-page="stats">统计</button>
+                <button id="tab-settings" class="tab-button" type="button" data-page="settings">设置</button>
+            </nav>
+            <div class="header-actions">
+                <span id="status" class="status-pill hidden">● POST通道</span>
+                <span id="auth-user" class="auth-user"></span>
+            </div>
+        </header>
+
+        <main class="layout single-layout">
+            <section class="content">
+
+                <div id="ledger-page" class="page-section active">
+                    <section class="panel transaction-editor featured-editor">
+                        <div class="panel-title editor-title">
+                            <h2 id="transaction-form-title" class="hidden"></h2>
+                            <button id="btn-cancel-edit" class="secondary small hidden">取消编辑</button>
+                        </div>
+                        <form id="transaction-form" class="transaction-form">
+                            <input id="transaction-id" type="hidden">
+                            <label class="field amount-field">
+                                <span class="sr-only">金额</span>
+                                <input id="transaction-amount" type="number" min="0.01" step="0.01" placeholder="0.00" required aria-label="金额">
+                            </label>
+                            <div class="quick-category-panel">
+                                <div id="quick-category-list" class="quick-category-list empty">请选择账本</div>
+                            </div>
+                            <div class="transaction-actions">
+                                <button id="btn-save-transaction" type="submit">保存</button>
+                                <button id="btn-toggle-transaction-details" class="secondary small transaction-details-toggle" type="button" aria-expanded="false">展开类型/日期/分类/备注</button>
+                            </div>
+                            <div id="transaction-details" class="transaction-details collapsed">
+                                <label class="field">
+                                    <span>类型</span>
+                                    <select id="transaction-type" required>
+                                        <option value="expense">支出</option>
+                                        <option value="income">收入</option>
+                                    </select>
+                                </label>
+                                <label class="field">
+                                    <span>日期</span>
+                                    <input id="transaction-date" type="date" required>
+                                </label>
+                                <label class="field category-field">
+                                    <span>分类</span>
+                                    <select id="transaction-category" required></select>
+                                </label>
+                                <label class="field wide-field">
+                                    <span>备注</span>
+                                    <input id="transaction-description" type="text" placeholder="例如：晚餐、工资、房租" maxlength="120">
+                                </label>
+                            </div>
+                        </form>
+                    </section>
+
+                    <section class="panel recent-panel">
+                        <div class="panel-title">
+                            <h2>最近流水</h2>
+                            <span id="transaction-total" class="muted">共 0 条</span>
+                        </div>
+                        <div id="transaction-list" class="transaction-list loading">请选择账本</div>
+                        <div class="pagination transaction-pagination">
+                            <button id="btn-prev-page" class="secondary small pagination-icon-button" type="button" aria-label="上一页" title="上一页">&#x2039;</button>
+                            <span id="page-info">第 1 页</span>
+                            <button id="btn-next-page" class="secondary small pagination-icon-button" type="button" aria-label="下一页" title="下一页">&#x203A;</button>
+                        </div>
+                    </section>
+                </div>
+
+                <div id="stats-page" class="page-section">
+                    <!-- 统计周期选择器 — 移到最顶端 -->
+                    <section class="panel stats-period-top">
+                        <div class="stats-period-panel" aria-label="统计周期快捷筛选">
+                            <div class="period-navigation" role="group" aria-label="切换统计周期">
+                                <button id="btn-prev-period" class="period-arrow" type="button" aria-label="上一个周期">‹</button>
+                                <div class="period-shortcuts" role="group" aria-label="统计周期">
+                                    <button id="btn-period-week" class="period-button" type="button" data-period="week">本周</button>
+                                    <button id="btn-period-month" class="period-button active" type="button" data-period="month">本月</button>
+                                    <button id="btn-period-year" class="period-button" type="button" data-period="year">本年</button>
+                                </div>
+                                <button id="btn-next-period" class="period-arrow" type="button" aria-label="下一个周期">›</button>
+                            </div>
+                            <span id="current-period-label" class="current-period-label">本月</span>
+                        </div>
+                    </section>
+
+                    <section class="summary-grid stats-summary-grid">
+                        <article id="summary-expense-card" class="summary-card expense">
+                            <span>支出</span>
+                            <strong id="summary-expense">¥0.00</strong>
+                        </article>
+                        <article id="summary-income-card" class="summary-card income">
+                            <span>收入</span>
+                            <strong id="summary-income">¥0.00</strong>
+                        </article>
+                        <article id="summary-balance-card" class="summary-card balance">
+                            <span>结余</span>
+                            <strong id="summary-balance">¥0.00</strong>
+                        </article>
+                    </section>
+
+                    <section class="content-grid stats-grid">
+                        <section class="panel stats-category-panel">
+                            <!-- 工具栏：路径导航 + 排序按钮 + 返回 -->
+                            <div class="stats-toolbar">
+                                <div class="stats-path" id="stats-path">
+                                    <span class="path-segment active" data-path="root">全部</span>
+                                </div>
+                                <div class="stats-actions">
+                                    <button id="btn-sort-amount" class="sort-button active" type="button" title="按金额排序">金额</button>
+                                    <button id="btn-sort-time" class="sort-button" type="button" title="按时间排序">时间</button>
+                                    <button id="btn-stats-back" class="secondary small hidden" type="button">← 返回</button>
+                                </div>
+                            </div>
+                            <!-- 分类 + 流水混合列表 -->
+                            <div id="category-stats" class="stats-list loading">暂无数据</div>
+                            <!-- 增量加载指示器 -->
+                            <div id="stats-load-more" class="stats-load-more hidden">加载中...</div>
+                            <div id="stats-end" class="stats-end hidden">— 数据已经显示完毕了 —</div>
+                        </section>
+                    </section>
+                </div>
+
+                <div id="settings-page" class="page-section">
+                    <nav class="settings-sub-tabs" aria-label="设置子分页切换">
+                        <button id="settings-tab-groups" class="settings-sub-tab active" type="button" data-settings-page="groups">账本管理</button>
+                        <button id="settings-tab-categories" class="settings-sub-tab" type="button" data-settings-page="categories">分类管理</button>
+                        <button id="settings-tab-members" class="settings-sub-tab" type="button" data-settings-page="members">成员管理</button>
+                        <a id="settings-admin-entry-link" class="settings-sub-tab system-admin-tab hidden" href="/admin.html">系统管理</a>
+                        <button id="btn-logout" class="settings-sub-tab logout-tab" type="button">退出</button>
+                    </nav>
+
+                    <section id="settings-groups-page" class="settings-sub-page active">
+                        <section class="panel settings-book-panel">
+                            <div class="panel-title">
+                                <h2>账本</h2>
+                                <div class="panel-title-actions">
+                                    <button id="btn-toggle-group-form" class="icon-button" type="button" title="创建账本" aria-label="创建账本" aria-controls="group-form" aria-expanded="false">➕</button>
+                                    <button id="btn-refresh" class="icon-button" type="button" title="刷新" aria-label="刷新账本列表">🔄</button>
+                                </div>
+                            </div>
+                            <div id="group-list" class="list-stack loading">加载中...</div>
+                            <form id="group-form" class="inline-form hidden">
+                                <input id="group-name" type="text" placeholder="新账本名称" maxlength="40" aria-label="新账本名称">
+                                <button type="submit">创建</button>
+                            </form>
+                        </section>
+
+                        <section class="panel pid-panel">
+                            <div class="panel-title">
+                                <h2>外部接口凭证</h2>
+                            </div>
+                            <form id="pid-form" class="inline-form pid-form">
+                                <input id="pid-value" type="text" placeholder="输入全局唯一 PID" maxlength="80" autocomplete="off" required>
+                                <select id="pid-ledger" aria-label="PID 目标账本" required></select>
+                                <button id="btn-create-pid" type="submit">创建</button>
+                            </form>
+                            <div id="pid-status" class="pid-status muted">加载中...</div>
+                            <div id="pid-list" class="list-stack loading">加载中...</div>
+                        </section>
+
+                        <!-- 语音记账测试（仅 admin 可见） -->
+                        <section id="voice-test-section" class="panel hidden">
+                            <div class="panel-title">
+                                <h2>🎤 语音记账测试</h2>
+                            </div>
+                            <form id="voice-test-form" class="voice-test-form">
+                                <label class="field voice-test-textarea">
+                                    <span>输入口语文本，测试 LLM 解析效果（不会写入数据库）</span>
+                                    <textarea id="voice-test-text" rows="3" placeholder="例如：早餐 7 元，停车费 50"></textarea>
+                                </label>
+                                <button id="btn-voice-test" type="submit">LLM 解析测试</button>
+                            </form>
+                            <div id="voice-test-result" class="voice-test-result hidden"></div>
+                        </section>
+
+                        <section class="panel import-panel">
+                            <div class="panel-title">
+                                <h2>账单导入</h2>
+                            </div>
+                            <p class="muted">上传账单文件后会自动识别并导入到当前账本；重复流水会按来源交易单号覆盖旧记录。</p>
+                            <form id="bill-import-form" class="upload-form">
+                                <input id="bill-import-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+                                <button id="btn-bill-import" type="submit">上传并导入</button>
+                            </form>
+                            <div id="bill-import-result" class="form-message hidden"></div>
+                        </section>
+                    </section>
+
+                    <section id="settings-categories-page" class="settings-sub-page">
+                        <section class="panel">
+                            <div class="panel-title category-panel-title">
+                                <h2>分类管理</h2>
+                                <button id="btn-toggle-category-form" class="secondary small" type="button" aria-expanded="false" aria-controls="category-form-panel">添加</button>
+                            </div>
+                            <div id="category-form-panel" class="category-form-panel hidden">
+                                <form id="category-form" class="inline-form category-form">
+                                    <input id="category-id" type="hidden">
+                                    <select id="category-type">
+                                        <option value="expense">支出</option>
+                                        <option value="income">收入</option>
+                                    </select>
+                                    <select id="category-parent">
+                                        <option value="0">一级分类</option>
+                                    </select>
+                                    <input id="category-name" type="text" placeholder="分类名称" maxlength="30">
+                                    <input id="category-sort" type="number" placeholder="排序" value="0">
+                                    <button id="btn-save-category" type="submit">添加</button>
+                                    <button id="btn-cancel-category-edit" type="button" class="secondary hidden">取消</button>
+                                </form>
+                            </div>
+                            <div id="category-list" class="chip-list loading">请选择账本</div>
+                        </section>
+                    </section>
+
+                    <section id="settings-members-page" class="settings-sub-page">
+                        <section id="pending-action-inbox-panel" class="panel pending-action-inbox-panel hidden">
+                            <div class="panel-title compact-title">
+                                <h2>待处理邀请</h2>
+                                <span class="muted">这里显示需要当前账号确认的成员邀请，不依赖是否已加入账本</span>
+                            </div>
+                            <div id="member-invite-incoming-list" class="member-invite-list empty">暂无待确认邀请</div>
+                        </section>
+
+                        <section id="member-empty-family-panel" class="panel member-empty-family-panel hidden">
+                            <div class="panel-title">
+                                <h2>创建家庭组</h2>
+                                <span class="muted">多人共享账本前需要先创建家庭组</span>
+                            </div>
+                            <div class="empty family-empty-hint">
+                                当前用户还不属于任何家庭组。创建家庭组后，其他用户可通过成员管理加入同一个家庭组。
+                            </div>
+                            <form id="member-create-family-form" class="inline-form member-create-family-form">
+                                <input id="member-family-name" type="text" placeholder="家庭组名称，例如：我的家庭" maxlength="40">
+                                <button id="btn-member-create-family" type="submit">创建家庭组</button>
+                            </form>
+                        </section>
+
+                        <section id="member-manage-panel" class="panel">
+                            <div class="panel-title">
+                                <h2>成员管理</h2>
+                            </div>
+                            <div id="member-list" class="member-list loading">请选择账本</div>
+                            <div id="member-invite-grid" class="member-invite-grid hidden">
+                                <div id="member-invite-sent-card" class="member-invite-card hidden">
+                                    <div class="panel-title compact-title">
+                                        <h3>已发送邀请</h3>
+                                        <span class="muted">等待对方确认，可取消未处理邀请</span>
+                                    </div>
+                                    <div id="member-invite-sent-list" class="member-invite-list empty">暂无已发送邀请</div>
+                                </div>
+                            </div>
+                            <form id="member-form" class="inline-form member-form hidden">
+                                <input id="member-username" type="text" placeholder="输入已注册用户名，发送加入邀请" maxlength="40">
+                                <select id="member-role">
+                                    <option value="member">成员</option>
+                                    <option value="admin">管理员</option>
+                                </select>
+                                <button type="submit">发送邀请</button>
+                            </form>
+                            <div id="invite-panel" class="invite-panel hidden">
+                                <div class="panel-title compact-title">
+                                    <h3>邀请新用户加入当前家庭</h3>
+                                    <span class="muted">独立用户邀请请前往管理员页“用户管理”；本入口仅创建当前家庭邀请</span>
+                                </div>
+                                <div class="invite-options">
+                                    <label><input id="invite-join-ledger" type="checkbox" checked> 将当前账本设为注册后的默认账本</label>
+                                    <label>注册后的家庭角色
+                                        <select id="invite-family-role">
+                                            <option value="member" selected>成员</option>
+                                            <option value="owner">所有者</option>
+                                        </select>
+                                    </label>
+                                </div>
+                                <form id="invite-form" class="inline-form invite-form">
+                                    <input id="invite-link" type="text" placeholder="点击邀请注册生成链接" aria-label="邀请注册链接">
+                                    <button id="btn-copy-invite" type="button">复制链接</button>
+                                    <button id="btn-create-invite" type="submit">生成家庭邀请</button>
+                                </form>
+                                <div id="invite-status" class="muted">邀请有效期由系统参数控制，注册后将加入当前账本所属家庭。</div>
+                            </div>
+                        </section>
+                    </section>
+
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+    <script src="/js/app.js"></script>
+</body>
+</html>
