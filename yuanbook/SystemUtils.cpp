@@ -1,17 +1,18 @@
 #include "SystemUtils.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <sstream>
+#include <vector>
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
 #include <windows.h>
-#define popen  _popen
-#define pclose _pclose
 #else
 #include <sys/wait.h>
 #include <unistd.h>
@@ -24,7 +25,7 @@ namespace SystemUtils
         static bool IsAbsolutePathString(const std::string& PathValue)
         {
             if (PathValue.empty()) return false;
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
             if (PathValue.size() >= 2 && PathValue[1] == ':') return true;
             if (PathValue[0] == '/' || PathValue[0] == '\\') return true;
 #else
@@ -35,9 +36,9 @@ namespace SystemUtils
 
         static std::string GetExecutableDirectory()
         {
-#ifdef _WIN32
-            wchar_t PathBuffer[MAX_PATH];
-            if (!GetModuleFileNameW(nullptr, PathBuffer, MAX_PATH)) {
+#if defined(_WIN32) || defined(__CYGWIN__)
+            char PathBuffer[32768] = {};
+            if (!GetModuleFileNameA(nullptr, PathBuffer, static_cast<DWORD>(sizeof(PathBuffer)))) {
                 return "";
             }
             return std::filesystem::path(PathBuffer).parent_path().string();
@@ -54,7 +55,7 @@ namespace SystemUtils
     }
     std::string ShellQuote(const std::string& Value)
     {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
         std::string Result = "\"";
         for (char Ch : Value) {
             if (Ch == '"') {
@@ -83,7 +84,26 @@ namespace SystemUtils
                                  const std::string& Extension)
     {
         const auto Now = std::chrono::steady_clock::now().time_since_epoch().count();
-        const std::filesystem::path TempDir = std::filesystem::temp_directory_path();
+        std::filesystem::path TempDir;
+
+#if defined(_WIN32) || defined(__CYGWIN__)
+        // Cygwin 的 std::filesystem 默认返回 /tmp 这类 POSIX 路径；原生 Windows 子进程无法解析。
+        // 统一通过 Win32 API 获取 DOS 路径，保证写文件端与 curl.exe 看到的是同一个文件。
+        char TempPathBuffer[32768] = {};
+        const DWORD TempPathLength = GetTempPathA(static_cast<DWORD>(sizeof(TempPathBuffer)),
+                                                   TempPathBuffer);
+        if (TempPathLength > 0 && TempPathLength < sizeof(TempPathBuffer)) {
+            TempDir = std::filesystem::path(TempPathBuffer);
+        } else {
+            const std::string ExecutableDirectory = GetExecutableDirectory();
+            TempDir = ExecutableDirectory.empty()
+                ? std::filesystem::current_path()
+                : std::filesystem::path(ExecutableDirectory);
+        }
+#else
+        TempDir = std::filesystem::temp_directory_path();
+#endif
+
         std::ostringstream Name;
         Name << Prefix << "_" << Now << "_" << rand() << Extension;
         return (TempDir / Name.str()).string();
@@ -124,7 +144,7 @@ namespace SystemUtils
 
     int NormalizeProcessExitCode(int Status)
     {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__CYGWIN__)
         return Status;
 #else
         if (Status == -1) return -1;
@@ -134,21 +154,146 @@ namespace SystemUtils
 #endif
     }
 
+    std::string ResolveExecutablePath(const std::string& ExecutablePath)
+    {
+        if (ExecutablePath.empty()) return ExecutablePath;
+
+#if defined(_WIN32) || defined(__CYGWIN__)
+        // 显式路径必须尊重管理员配置，不得静默回退到另一份同名程序。
+        if (IsAbsolutePathString(ExecutablePath) ||
+            ExecutablePath.find('/') != std::string::npos ||
+            ExecutablePath.find('\\') != std::string::npos) {
+            return ExecutablePath;
+        }
+
+        char ResolvedPath[32768] = {};
+        const DWORD ResolvedLength = SearchPathA(nullptr,
+                                                 ExecutablePath.c_str(),
+                                                 ".exe",
+                                                 static_cast<DWORD>(sizeof(ResolvedPath)),
+                                                 ResolvedPath,
+                                                 nullptr);
+        if (ResolvedLength > 0 && ResolvedLength < sizeof(ResolvedPath)) {
+            return std::string(ResolvedPath, ResolvedLength);
+        }
+
+        // 服务账号的 PATH 可能与交互式终端不同；系统 curl 位于 System32 时仍应可用。
+        char SystemDirectory[32768] = {};
+        const UINT SystemDirectoryLength = GetSystemDirectoryA(SystemDirectory,
+                                                                static_cast<UINT>(sizeof(SystemDirectory)));
+        if (SystemDirectoryLength > 0 && SystemDirectoryLength < sizeof(SystemDirectory)) {
+            std::filesystem::path Candidate = std::filesystem::path(SystemDirectory) / ExecutablePath;
+            if (!Candidate.has_extension()) {
+                Candidate += ".exe";
+            }
+
+            std::error_code ErrorCode;
+            if (std::filesystem::is_regular_file(Candidate, ErrorCode)) {
+                return Candidate.string();
+            }
+        }
+#endif
+
+        return ExecutablePath;
+    }
+
     bool ReadPipeAll(const std::string& Command,
                      std::string& OutText,
-                     int& OutCode)
+                     int& OutCode,
+                     std::string* OutStartError)
     {
         OutText.clear();
         OutCode = -1;
+        if (OutStartError) OutStartError->clear();
 
-#ifdef _WIN32
-        const std::string PopenCommand = "\"" + Command + "\"";
+#if defined(_WIN32) || defined(__CYGWIN__)
+        // Cygwin 的 popen() 强依赖部署环境中的 /bin/sh；纯 Windows 发布包通常不包含该文件。
+        // 直接使用 Win32 管道与 CreateProcess 可避免 shell 依赖，同时保留现有命令字符串接口。
+        SECURITY_ATTRIBUTES SecurityAttributes{};
+        SecurityAttributes.nLength = sizeof(SecurityAttributes);
+        SecurityAttributes.bInheritHandle = TRUE;
+
+        HANDLE ReadHandle = nullptr;
+        HANDLE WriteHandle = nullptr;
+        if (!CreatePipe(&ReadHandle, &WriteHandle, &SecurityAttributes, 0)) {
+            if (OutStartError) {
+                *OutStartError = "CreatePipe failed; win32Error=" + std::to_string(GetLastError());
+            }
+            return false;
+        }
+
+        if (!SetHandleInformation(ReadHandle, HANDLE_FLAG_INHERIT, 0)) {
+            const DWORD Win32Error = GetLastError();
+            CloseHandle(ReadHandle);
+            CloseHandle(WriteHandle);
+            if (OutStartError) {
+                *OutStartError = "SetHandleInformation failed; win32Error=" + std::to_string(Win32Error);
+            }
+            return false;
+        }
+
+        STARTUPINFOA StartupInfo{};
+        StartupInfo.cb = sizeof(StartupInfo);
+        StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+        StartupInfo.hStdOutput = WriteHandle;
+        StartupInfo.hStdError = WriteHandle;
+        StartupInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+
+        PROCESS_INFORMATION ProcessInfo{};
+        std::vector<char> MutableCommand(Command.begin(), Command.end());
+        MutableCommand.push_back('\0');
+
+        const BOOL bCreated = CreateProcessA(nullptr,
+                                             MutableCommand.data(),
+                                             nullptr,
+                                             nullptr,
+                                             TRUE,
+                                             CREATE_NO_WINDOW,
+                                             nullptr,
+                                             nullptr,
+                                             &StartupInfo,
+                                             &ProcessInfo);
+        const DWORD CreateError = bCreated ? ERROR_SUCCESS : GetLastError();
+        CloseHandle(WriteHandle);
+
+        if (!bCreated) {
+            CloseHandle(ReadHandle);
+            if (OutStartError) {
+                *OutStartError = "CreateProcess failed; win32Error=" + std::to_string(CreateError);
+            }
+            return false;
+        }
+
+        char Buffer[4096];
+        DWORD BytesRead = 0;
+        while (ReadFile(ReadHandle, Buffer, static_cast<DWORD>(sizeof(Buffer)), &BytesRead, nullptr) &&
+               BytesRead > 0) {
+            OutText.append(Buffer, BytesRead);
+        }
+        CloseHandle(ReadHandle);
+
+        WaitForSingleObject(ProcessInfo.hProcess, INFINITE);
+        DWORD ProcessExitCode = static_cast<DWORD>(-1);
+        if (GetExitCodeProcess(ProcessInfo.hProcess, &ProcessExitCode)) {
+            OutCode = static_cast<int>(ProcessExitCode);
+        }
+        CloseHandle(ProcessInfo.hThread);
+        CloseHandle(ProcessInfo.hProcess);
+        return true;
 #else
-        const std::string PopenCommand = Command;
-#endif
-
-        FILE* Pipe = popen(PopenCommand.c_str(), "r");
-        if (!Pipe) return false;
+        errno = 0;
+        FILE* Pipe = popen(Command.c_str(), "r");
+        if (!Pipe) {
+            if (OutStartError) {
+                std::ostringstream Error;
+                Error << "pipe process creation failed";
+                if (errno != 0) {
+                    Error << "; errno=" << errno << " (" << std::strerror(errno) << ")";
+                }
+                *OutStartError = Error.str();
+            }
+            return false;
+        }
 
         char Buffer[4096];
         while (fgets(Buffer, sizeof(Buffer), Pipe)) {
@@ -157,6 +302,18 @@ namespace SystemUtils
 
         OutCode = NormalizeProcessExitCode(pclose(Pipe));
         return true;
+#endif
+    }
+
+    std::string MaskSensitiveValue(const std::string& Value)
+    {
+        if (Value.empty()) return std::string();
+        if (Value.size() <= 4) return std::string(Value.size(), '*');
+
+        // 仅保留首尾各两个字节，避免前端响应暴露完整密钥，同时保留最低限度的辨识能力。
+        return Value.substr(0, 2)
+            + std::string(Value.size() - 4, '*')
+            + Value.substr(Value.size() - 2);
     }
 
     std::string Trim(const std::string& Value)

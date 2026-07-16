@@ -11,7 +11,7 @@ namespace SystemUtils
      *
      * 该函数面向当前项目中的两类场景：
      * 1. 通过 `system()` 调用外部命令，例如解压 XLSX。
-     * 2. 通过 `popen()` / `_popen()` 调用命令并捕获输出，例如调用 curl。
+     * 2. 通过平台进程接口调用命令并捕获输出，例如调用 curl。
      *
      * Windows 下会生成兼容 `cmd.exe` 的双引号参数；
      * Unix-like 平台下会生成单引号参数，并正确转义内部单引号。
@@ -25,11 +25,13 @@ namespace SystemUtils
      * @brief 生成位于系统临时目录中的唯一文件路径。
      *
      * 常用于写入临时请求体、临时压缩包或调试快照文件。
-     * 函数只生成路径，不会主动创建文件。
+     * 函数只生成路径，不会主动创建文件。Windows 及 Cygwin 构建通过 Win32 API
+     * 返回原生 DOS 路径，确保 Cygwin 主程序创建的文件可被 `curl.exe` 等原生进程读取。
      *
      * @param Prefix 文件名前缀，用于标识用途，例如 `cp_voice_request`。
      * @param Extension 文件扩展名，建议包含前导点，例如 `.json`。
-     * @return 系统临时目录下的候选唯一路径字符串。
+     * @return 系统临时目录下的候选唯一路径字符串；Windows 下不会返回 `/tmp` 路径。
+     * @sideeffect 不创建目录或文件；Win32 临时目录查询失败时回退到程序目录或当前目录。
      */
     std::string MakeTempFilePath(const std::string& Prefix,
                                  const std::string& Extension);
@@ -83,19 +85,51 @@ namespace SystemUtils
     int NormalizeProcessExitCode(int Status);
 
     /**
+     * @brief 将外部程序名称解析为当前进程可访问的可执行文件路径。
+     *
+     * 已包含目录分隔符或属于绝对路径的输入会原样返回。Windows 下对 `curl` 这类命令名
+     * 使用系统可执行文件搜索规则解析 `.exe`，并在 PATH 搜索失败时额外检查系统目录，
+     * 从而降低服务进程、IDE 子进程与交互式终端 PATH 不一致造成的启动失败概率。
+     * Unix-like 平台当前保持原始命令名，由 shell 按既有规则解析。
+     *
+     * @param ExecutablePath 配置中的可执行文件路径或命令名。
+     * @return 可解析时返回稳定路径；无法解析时返回原始输入，供后续启动逻辑输出明确错误。
+     * @sideeffect 不修改进程环境变量，不创建文件，也不启动任何外部进程。
+     */
+    std::string ResolveExecutablePath(const std::string& ExecutablePath);
+
+    /**
      * @brief 执行命令并捕获标准输出全文。
      *
      * 该函数用于当前项目中调用 `curl` 等系统工具，并同步读取输出。
-     * 它不会抛异常，而是通过返回值与输出参数表达状态。
+     * 它不会抛异常，而是通过返回值与输出参数表达状态。Windows 及 Cygwin 构建使用
+     * Win32 `CreateProcess` 与匿名管道，不依赖 `/bin/sh` 或 `COMSPEC`；Unix-like 平台
+     * 继续使用 `popen()`，以维持树莓派部署行为。
      *
-     * @param Command 已完成拼接的完整命令字符串。
+     * @param Command 已完成拼接的完整命令字符串；调用方不得将鉴权密钥写入诊断日志。
      * @param OutText 成功启动进程后写入捕获到的标准输出内容。
      * @param OutCode 写入归一化后的进程退出码；若无法启动进程则保持为 `-1`。
+     * @param OutStartError 可选错误输出；无法创建管道或进程时写入不含 Command 内容的诊断信息。
      * @return true 表示命令已成功启动并完成输出读取；false 表示无法创建管道进程。
+     * @sideeffect 同步启动外部命令并阻塞读取其输出，直至子进程退出。
      */
     bool ReadPipeAll(const std::string& Command,
                      std::string& OutText,
-                     int& OutCode);
+                     int& OutCode,
+                     std::string* OutStartError = nullptr);
+
+    /**
+     * @brief 生成仅供前端展示的敏感数据脱敏文本。
+     *
+     * 脱敏规则按字节长度执行：空值保持为空；长度不超过 4 的值全部替换为 `*`；
+     * 其余值保留前 2 个与后 2 个字节，中间内容全部替换为 `*`。该函数只用于展示边界，
+     * 禁止将返回值写回持久化存储或用于业务鉴权。
+     *
+     * @param Value 需要脱敏的原始敏感数据。
+     * @return 不包含完整原文的展示文本；返回长度与输入字节长度一致。
+     * @sideeffect 无副作用，不修改输入值。
+     */
+    std::string MaskSensitiveValue(const std::string& Value);
 
     /**
      * @brief 去除字符串首尾 ASCII 空白字符。

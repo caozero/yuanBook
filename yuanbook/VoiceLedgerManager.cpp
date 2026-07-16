@@ -782,9 +782,10 @@ bool VoiceLedgerManager::RunDeepSeekRequest(
     }
 
     string authHeader = "Authorization: Bearer " + ConfigSnapshot.ApiKey;
+    const string resolvedCurlPath = SystemUtils::ResolveExecutablePath(ConfigSnapshot.CurlPath);
 
     ostringstream cmd;
-    cmd << SystemUtils::ShellQuote(ConfigSnapshot.CurlPath)
+    cmd << SystemUtils::ShellQuote(resolvedCurlPath)
         << " -sS --fail-with-body"
         << " --connect-timeout " << ConfigSnapshot.TimeoutSec
         << " --max-time " << ConfigSnapshot.TimeoutSec
@@ -792,18 +793,27 @@ bool VoiceLedgerManager::RunDeepSeekRequest(
         << " -H " << SystemUtils::ShellQuote("Content-Type: application/json")
         << " -H " << SystemUtils::ShellQuote(authHeader)
         << " --data-binary " << SystemUtils::ShellQuote("@" + reqPath)
-        << " " << SystemUtils::ShellQuote(ConfigSnapshot.Endpoint)
-        << " 2>&1";
+        << " " << SystemUtils::ShellQuote(ConfigSnapshot.Endpoint);
+#if !defined(_WIN32) && !defined(__CYGWIN__)
+    // Unix-like 平台的 popen 仅捕获标准输出，因此由 shell 合并标准错误。
+    cmd << " 2>&1";
+#endif
 
     string response;
+    string processStartError;
     int exitCode = -1;
-    bool pipeOk = SystemUtils::ReadPipeAll(cmd.str(), response, exitCode);
+    bool pipeOk = SystemUtils::ReadPipeAll(cmd.str(), response, exitCode, &processStartError);
 
     std::error_code ec;
     fs::remove(reqPath, ec);
 
     if (!pipeOk) {
-        OutError = "Failed to start curl process: " + SystemUtils::ShellQuote(ConfigSnapshot.CurlPath);
+        OutError = "Failed to start curl process: configured=" +
+                   SystemUtils::ShellQuote(ConfigSnapshot.CurlPath) +
+                   ", resolved=" + SystemUtils::ShellQuote(resolvedCurlPath);
+        if (!processStartError.empty()) {
+            OutError += ", detail=" + processStartError;
+        }
         return false;
     }
     if (exitCode != 0) {

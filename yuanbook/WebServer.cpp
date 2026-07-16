@@ -2646,6 +2646,17 @@ void FWebServer::HandleLedgerSystemSettingsUpdate(const std::string& DataStr,
         return;
     }
 
+    if (setting.bSensitive) {
+        std::string currentValue;
+        if (m_LedgerManager.GetSystemSettingValue(setting.SettingKey, currentValue)
+            && !currentValue.empty()
+            && setting.SettingValue == SystemUtils::MaskSensitiveValue(currentValue)) {
+            // 前端展示值不是配置原文，禁止将脱敏占位文本覆盖到真实配置中。
+            Send(BuildWSError(Cmd, "Sensitive setting is masked; enter a new value before saving"));
+            return;
+        }
+    }
+
     FSystemSettingChangedEvent event;
     if (!m_LedgerManager.UpsertSystemSetting(setting, updatedBy, &event)) {
         Send(BuildWSError(Cmd, "Failed to update system setting"));

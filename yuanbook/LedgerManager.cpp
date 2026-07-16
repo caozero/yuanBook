@@ -2,6 +2,7 @@
 
 #include "LedgerManager.h"
 #include "JsonLite.h"
+#include "SystemUtils.h"
 
 extern "C" {
 #include "sqlite3.h"
@@ -935,10 +936,14 @@ bool LedgerManager::SerializeSystemSettingsToJson(std::string& OutJson,
     oss << "[";
     for (size_t i = 0; i < Items.size(); ++i) {
         const auto& item = Items[i];
+        // 敏感配置只能在服务端序列化边界脱敏，数据库与运行时快照始终保留真实值。
+        const std::string displayValue = item.bSensitive
+            ? SystemUtils::MaskSensitiveValue(item.SettingValue)
+            : item.SettingValue;
         if (i > 0) oss << ",";
         oss << "{"
             << "\"settingKey\":\"" << EscapeJsonString(item.SettingKey) << "\","
-            << "\"settingValue\":\"" << EscapeJsonString(item.SettingValue) << "\","
+            << "\"settingValue\":\"" << EscapeJsonString(displayValue) << "\","
             << "\"valueType\":\"" << EscapeJsonString(item.ValueType) << "\","
             << "\"category\":\"" << EscapeJsonString(item.Category) << "\","
             << "\"isSensitive\":" << (item.bSensitive ? "true" : "false") << ","
